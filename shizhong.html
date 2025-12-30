@@ -1,0 +1,1190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>极简翻页时钟</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* --- 主题变量定义 --- */
+        /* 1. 经典深色 (默认) */
+        :root {
+            --bg-color: #1a1a1a;
+            --card-bg: #333;
+            --text-color: #e0e0e0;
+            --card-width: 12vw; 
+            --card-height: 18vw; 
+            --font-size: 14vw;
+            --border-radius: 1vw;
+            --flip-duration: 0.6s;
+            --date-color: #aaa;
+            --hover-bg: rgba(255, 255, 255, 0.1);
+            --accent-color: #60a5fa; /* 选中状态颜色 */
+            --shadow-color: rgba(0,0,0,0.4);
+        }
+
+        /* 2. 极简浅色 */
+        [data-theme="light"] {
+            --bg-color: #f0f0f0;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --date-color: #555;
+            --hover-bg: rgba(0, 0, 0, 0.05);
+            --accent-color: #3b82f6;
+            --shadow-color: rgba(0,0,0,0.15);
+        }
+
+        /* 3. 赛博朋克 */
+        [data-theme="cyberpunk"] {
+            --bg-color: #09090b;
+            --card-bg: #18181b;
+            --text-color: #06b6d4; /* Cyan */
+            --date-color: #d946ef; /* Pink */
+            --hover-bg: rgba(6, 182, 212, 0.1);
+            --accent-color: #d946ef;
+            --shadow-color: rgba(6, 182, 212, 0.25);
+            font-family: 'Courier New', monospace; /* 机械感字体 */
+        }
+
+        /* 4. 复古纸张 */
+        [data-theme="vintage"] {
+            --bg-color: #eaddcf;
+            --card-bg: #dcc6b0;
+            --text-color: #5f4b32;
+            --date-color: #8c7b66;
+            --hover-bg: rgba(95, 75, 50, 0.1);
+            --accent-color: #a05a2c;
+            --shadow-color: rgba(95, 75, 50, 0.15);
+        }
+
+        /* 5. 深海幽蓝 */
+        [data-theme="ocean"] {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-color: #e2e8f0;
+            --date-color: #94a3b8;
+            --hover-bg: rgba(56, 189, 248, 0.1);
+            --accent-color: #38bdf8;
+            --shadow-color: rgba(15, 23, 42, 0.5);
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            transition: background-color 0.5s, color 0.5s;
+            user-select: none;
+        }
+
+        /* --- 提示小卡片 (Toast) --- */
+        .hint-card {
+            position: fixed;
+            top: 85px; 
+            right: 20px;
+            background: rgba(128, 128, 128, 0.1);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 12px 16px;
+            border-radius: 12px;
+            color: var(--text-color);
+            font-size: 0.85rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            opacity: 0;
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            z-index: 90;
+            pointer-events: none;
+            white-space: normal; 
+            max-width: 260px;
+            line-height: 1.4;
+            transform: translateY(-20px);
+        }
+
+        .hint-card.show {
+            transform: translateY(0);
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .hint-icon {
+            font-size: 1rem;
+            color: var(--accent-color);
+            margin-top: 2px;
+            flex-shrink: 0;
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
+            40% {transform: translateY(-3px);}
+            60% {transform: translateY(-2px);}
+        }
+
+        .hint-close {
+            cursor: pointer;
+            opacity: 0.5;
+            transition: opacity 0.2s, transform 0.2s;
+            display: flex;
+            align-items: center;
+            padding: 2px;
+            margin-left: auto;
+            flex-shrink: 0;
+        }
+        .hint-close:hover { opacity: 1; transform: scale(1.1); }
+
+        /* --- 移动端竖屏旋转提示层 --- */
+        .rotate-overlay {
+            display: none; /* 默认隐藏 */
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: var(--bg-color);
+            z-index: 9999;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-color);
+            text-align: center;
+            padding: 20px;
+        }
+
+        .rotate-icon {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            color: var(--accent-color);
+            animation: rotate-anim 2s infinite ease-in-out;
+        }
+
+        /* 旋转提示关闭按钮 */
+        .rotate-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 1.5rem;
+            color: var(--text-color);
+            opacity: 0.6;
+            cursor: pointer;
+            padding: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+            background: rgba(0,0,0,0.2);
+        }
+        .rotate-close:hover { opacity: 1; background: rgba(255,255,255,0.1); }
+
+        @keyframes rotate-anim {
+            0% { transform: rotate(0deg); }
+            40% { transform: rotate(-90deg); }
+            100% { transform: rotate(-90deg); }
+        }
+
+        /* --- 控制栏 --- */
+        .controls-wrapper {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            background: rgba(128, 128, 128, 0.1);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50px;
+            padding: 8px;
+            opacity: 0.5; 
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .controls-wrapper:hover, .controls-wrapper.expanded {
+            opacity: 1;
+            background: rgba(128, 128, 128, 0.25);
+            border-color: rgba(255, 255, 255, 0.2);
+            box-shadow: 0 10px 15px rgba(0,0,0,0.2);
+        }
+
+        .menu-items {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            max-width: 0; 
+            overflow: hidden;
+            opacity: 0;
+            transition: all 0.4s ease-in-out;
+            margin-right: 0;
+        }
+
+        .controls-wrapper.expanded .menu-items {
+            max-width: 600px; 
+            opacity: 1;
+            margin-right: 12px;
+        }
+
+        .control-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-color);
+            cursor: pointer;
+            font-size: 0.9rem;
+            opacity: 0.8;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+            padding: 6px 10px;
+            border-radius: 8px;
+        }
+
+        .control-btn:hover {
+            opacity: 1;
+            background: rgba(255,255,255,0.1);
+        }
+
+        .control-btn.active {
+            color: var(--accent-color);
+            font-weight: bold;
+            background: var(--hover-bg);
+            border: 1px solid var(--accent-color);
+        }
+
+        .toggle-btn {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: transparent;
+            border: none;
+            color: var(--text-color);
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: transform 0.4s ease;
+        }
+        
+        .toggle-btn:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .controls-wrapper.expanded .toggle-btn {
+            transform: rotate(180deg);
+        }
+
+        .divider-v {
+            width: 1px;
+            height: 16px;
+            background-color: currentColor;
+            opacity: 0.2;
+            margin: 0 4px;
+        }
+
+        /* --- 时钟容器 --- */
+        .clock {
+            display: flex;
+            justify-content: center;
+            gap: 1.5vw;
+            align-items: center;
+            padding: 0 5vw;
+            box-sizing: border-box;
+            width: 100%;
+            max-width: 100%;
+        }
+
+        .divider {
+            font-size: 8vw;
+            font-weight: bold;
+            margin-top: -2vw;
+            opacity: 0.5;
+        }
+
+        /* 日期显示 */
+        .date-container {
+            width: 100%;
+            padding-left: 10%; 
+            margin-bottom: 3vh;
+            display: flex;
+            align-items: center;
+            gap: 1.5vw;
+            opacity: 0;
+            height: 0;
+            overflow: hidden;
+            transition: all 0.5s ease;
+        }
+
+        .date-container.visible {
+            opacity: 1;
+            height: 5vw;
+        }
+
+        .date-part, .week-part {
+            font-size: 2.2vw;
+            font-weight: 400;
+            color: var(--date-color);
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            padding: 6px 16px;
+            border-radius: 8px;
+            transition: background-color 0.2s, transform 0.1s;
+            position: relative;
+        }
+
+        .date-part:hover, .week-part:hover {
+            background-color: var(--hover-bg);
+            color: var(--text-color);
+        }
+        
+        .date-part:active, .week-part:active {
+            transform: scale(0.96);
+        }
+
+        .flip-card {
+            position: relative;
+            width: var(--card-width);
+            height: var(--card-height);
+            background-color: var(--card-bg);
+            border-radius: var(--border-radius);
+            font-size: var(--font-size);
+            font-weight: bold;
+            line-height: var(--card-height);
+            text-align: center;
+            box-shadow: 0 10px 20px var(--shadow-color);
+            perspective: 200vw; 
+            transition: box-shadow 0.5s;
+        }
+
+        .top, .bottom, .top-flip, .bottom-flip {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 50%;
+            overflow: hidden;
+            background-color: var(--card-bg);
+            color: var(--text-color);
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            transition: background-color 0.5s, color 0.5s;
+        }
+
+        .top, .top-flip {
+            top: 0;
+            border-radius: var(--border-radius) var(--border-radius) 0 0;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+            transform-origin: bottom;
+        }
+
+        .bottom, .bottom-flip {
+            bottom: 0;
+            border-radius: 0 0 var(--border-radius) var(--border-radius);
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            transform-origin: top;
+        }
+
+        .top-text, .top-flip-text {
+            display: block;
+            margin-bottom: calc(var(--card-height) * -0.5);
+        }
+        
+        .bottom-text, .bottom-flip-text {
+            display: block;
+            margin-top: calc(var(--card-height) * -0.5);
+        }
+
+        .top { z-index: 1; }
+        .bottom { z-index: 2; }
+        .top-flip { z-index: 3; transform: rotateX(0deg); }
+        .bottom-flip { z-index: 2; transform: rotateX(90deg); }
+
+        .flipping .top-flip { animation: flip-down-front calc(var(--flip-duration) / 2) ease-in forwards; }
+        .flipping .bottom-flip { animation: flip-down-back calc(var(--flip-duration) / 2) ease-out calc(var(--flip-duration) / 2) forwards; }
+
+        @keyframes flip-down-front {
+            0% { transform: rotateX(0deg); }
+            100% { transform: rotateX(-90deg); opacity: 1; }
+        }
+
+        @keyframes flip-down-back {
+            0% { transform: rotateX(90deg); }
+            100% { transform: rotateX(0deg); }
+        }
+
+        /* 模态框样式 */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        
+        .modal-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-content {
+            background: var(--bg-color);
+            color: var(--text-color);
+            padding: 25px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            width: 90%;
+            max-width: 380px;
+            transform: scale(0.95);
+            transition: transform 0.3s;
+        }
+
+        .modal-overlay.open .modal-content {
+            transform: scale(1);
+        }
+
+        .modal-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+            border-bottom: 1px solid rgba(128,128,128,0.2);
+            padding-bottom: 10px;
+        }
+
+        .modal-options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        /* 主题选择网格 */
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .theme-option {
+            height: 60px;
+            border-radius: 12px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            border: 2px solid transparent;
+            transition: transform 0.2s, border-color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .theme-option:hover { transform: scale(1.03); }
+        .theme-option.selected { border-color: var(--accent-color); }
+        /* 选中标记 */
+        .theme-option.selected::after {
+            content: '✓';
+            position: absolute;
+            top: 2px;
+            right: 5px;
+            font-size: 0.8rem;
+            color: currentColor;
+        }
+
+        .option-btn {
+            background: rgba(128,128,128,0.1);
+            border: 1px solid transparent;
+            color: var(--text-color);
+            padding: 12px;
+            border-radius: 10px;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .option-btn:hover { background: rgba(128,128,128,0.2); }
+        .option-btn.selected {
+            background: var(--hover-bg);
+            border-color: var(--accent-color);
+            color: var(--accent-color);
+            font-weight: bold;
+        }
+        .option-btn.selected::after { content: '✓'; font-weight: bold; }
+
+        .option-lunar {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(236, 72, 153, 0.1));
+            border-color: rgba(139, 92, 246, 0.3);
+        }
+        .option-lunar.selected {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(236, 72, 153, 0.2));
+            border-color: #8b5cf6;
+            color: #a78bfa;
+        }
+
+        .modal-input {
+            width: 100%;
+            padding: 12px;
+            margin: 20px 0;
+            background: rgba(128,128,128,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: var(--text-color);
+            border-radius: 10px;
+            font-size: 1.1rem;
+            color-scheme: dark;
+        }
+        
+        [data-theme="light"] .modal-input { color-scheme: light; }
+
+        .modal-btns { display: flex; justify-content: flex-end; gap: 10px; }
+
+        .btn-primary, .btn-secondary {
+            padding: 8px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: opacity 0.2s;
+        }
+
+        .btn-primary { background: var(--accent-color); color: #fff; border: none; }
+        .btn-secondary { background: transparent; color: var(--text-color); border: 1px solid rgba(255,255,255,0.2); }
+        .btn-primary:hover, .btn-secondary:hover { opacity: 0.8; }
+
+        /* --- 移动端布局适配 --- */
+        
+        /* 默认移动端样式 (横屏或宽屏手机) */
+        @media (max-width: 768px) {
+            :root {
+                --card-width: 13vw;
+                --card-height: 19vw;
+                --font-size: 15vw;
+            }
+            .clock {
+                gap: 1vw;
+                padding: 0 2vw;
+            }
+            .flip-card { margin-bottom: 0; }
+            .divider { font-size: 5vw; margin-top: -1vw; }
+            
+            .controls-wrapper.expanded .menu-items {
+                flex-wrap: wrap; 
+                justify-content: center;
+                max-width: 220px;
+            }
+            
+            .hint-card {
+                top: auto;
+                bottom: 80px;
+                right: 50%;
+                transform: translateX(50%) translateY(20px);
+                width: 90%;
+                justify-content: center;
+                background: rgba(20, 20, 20, 0.8);
+            }
+            .hint-card.show {
+                transform: translateX(50%) translateY(0);
+            }
+        }
+
+        /* 移动端竖屏特别优化 (三排模式) */
+        @media (max-width: 768px) and (orientation: portrait) {
+            :root {
+                /* 竖屏下卡片变大 */
+                --card-width: 35vw; 
+                --card-height: 50vw; 
+                --font-size: 38vw;
+                --border-radius: 4vw;
+            }
+            
+            .clock {
+                display: grid;
+                grid-template-columns: 1fr 1fr; /* 两列 */
+                gap: 3vh 4vw; /* 行间距 和 列间距 */
+                justify-items: center;
+                align-content: center;
+                padding: 0 10vw;
+                margin-top: 2vh;
+            }
+            
+            .divider {
+                display: none; /* 竖屏不显示冒号 */
+            }
+            
+            .flip-card {
+                width: 100%;
+                height: var(--card-height);
+                box-shadow: 0 5px 15px var(--shadow-color);
+            }
+
+            /* 日期居中 */
+            .date-container {
+                justify-content: center;
+                padding-left: 0;
+                margin-bottom: 4vh;
+            }
+            
+            .date-part, .week-part {
+                font-size: 5vw;
+            }
+            
+            /* 调整控制栏位置 */
+            .controls-wrapper {
+                top: 10px;
+                right: 10px;
+                transform: scale(0.9);
+                transform-origin: top right;
+            }
+            
+            /* 旋转提示可见 */
+            .rotate-overlay {
+                display: flex;
+            }
+        }
+    </style>
+</head>
+<body data-theme="dark">
+
+    <!-- 移动端竖屏旋转提示 -->
+    <div class="rotate-overlay" id="rotateOverlay">
+        <div class="rotate-close" onclick="closeRotateOverlay()">
+            <i class="fas fa-times"></i>
+        </div>
+        <i class="fas fa-mobile-alt rotate-icon"></i>
+        <p>为了获得最佳时钟体验<br>请旋转您的设备</p>
+    </div>
+
+    <!-- 优化的可收缩控制面板 -->
+    <div class="controls-wrapper" id="controlsWrapper">
+        <div class="menu-items">
+            <button class="control-btn active" id="btnLocal" onclick="setTimeSource('local')" title="使用本地设备时间">
+                <i class="fas fa-laptop-house"></i> 本地
+            </button>
+            <button class="control-btn" id="btnBeijing" onclick="setTimeSource('beijing')" title="显示网络时间(UTC+8)">
+                <i class="fas fa-globe-asia"></i> 网络
+            </button>
+            <button class="control-btn" id="btnCustom" onclick="openModal('customTime')" title="设定自定义起始时间">
+                <i class="fas fa-history"></i> 自定
+            </button>
+            
+            <div class="divider-v"></div>
+            
+            <button class="control-btn active" onclick="toggleDate()" id="btnDate" title="显示/隐藏日期">
+                <i class="far fa-calendar-alt"></i> 日期
+            </button>
+            <!-- 主题切换按钮 -->
+            <button class="control-btn" onclick="openModal('theme')" id="themeBtn" title="更换主题">
+                <i class="fas fa-palette"></i> 主题
+            </button>
+            <button class="control-btn" onclick="toggleFullScreen()" title="全屏模式">
+                <i class="fas fa-expand"></i>
+            </button>
+            <div class="divider-v"></div>
+        </div>
+
+        <button class="toggle-btn" onclick="toggleMenu()" title="设置">
+            <i class="fas fa-cog"></i>
+        </button>
+    </div>
+
+    <!-- 智能提示卡片 -->
+    <div id="hintCard" class="hint-card">
+        <i class="fas fa-lightbulb hint-icon"></i>
+        <span>提示：点击日期或星期可以切换显示格式哦！</span>
+        <div class="hint-close" onclick="closeHint()">
+            <i class="fas fa-times"></i>
+        </div>
+    </div>
+
+    <!-- 日期显示区域 -->
+    <div id="dateContainer" class="date-container visible">
+        <span id="datePart" class="date-part" onclick="openModal('dateFormat')" title="点击切换日期格式">2023年01月01日</span>
+        <span id="weekPart" class="week-part" onclick="openModal('weekFormat')" title="点击切换星期格式">星期日</span>
+    </div>
+
+    <!-- 时钟主体 -->
+    <div class="clock">
+        <!-- 小时 -->
+        <div class="flip-card" id="h1" data-val="0">
+            <div class="top"><span class="top-text">0</span></div>
+            <div class="bottom"><span class="bottom-text">0</span></div>
+            <div class="top-flip"><span class="top-flip-text">0</span></div>
+            <div class="bottom-flip"><span class="bottom-flip-text">0</span></div>
+        </div>
+        <div class="flip-card" id="h2" data-val="0">
+            <div class="top"><span class="top-text">0</span></div>
+            <div class="bottom"><span class="bottom-text">0</span></div>
+            <div class="top-flip"><span class="top-flip-text">0</span></div>
+            <div class="bottom-flip"><span class="bottom-flip-text">0</span></div>
+        </div>
+
+        <div class="divider">:</div>
+
+        <!-- 分钟 -->
+        <div class="flip-card" id="m1" data-val="0">
+            <div class="top"><span class="top-text">0</span></div>
+            <div class="bottom"><span class="bottom-text">0</span></div>
+            <div class="top-flip"><span class="top-flip-text">0</span></div>
+            <div class="bottom-flip"><span class="bottom-flip-text">0</span></div>
+        </div>
+        <div class="flip-card" id="m2" data-val="0">
+            <div class="top"><span class="top-text">0</span></div>
+            <div class="bottom"><span class="bottom-text">0</span></div>
+            <div class="top-flip"><span class="top-flip-text">0</span></div>
+            <div class="bottom-flip"><span class="bottom-flip-text">0</span></div>
+        </div>
+
+        <div class="divider">:</div>
+
+        <!-- 秒 -->
+        <div class="flip-card" id="s1" data-val="0">
+            <div class="top"><span class="top-text">0</span></div>
+            <div class="bottom"><span class="bottom-text">0</span></div>
+            <div class="top-flip"><span class="top-flip-text">0</span></div>
+            <div class="bottom-flip"><span class="bottom-flip-text">0</span></div>
+        </div>
+        <div class="flip-card" id="s2" data-val="0">
+            <div class="top"><span class="top-text">0</span></div>
+            <div class="bottom"><span class="bottom-text">0</span></div>
+            <div class="top-flip"><span class="top-flip-text">0</span></div>
+            <div class="bottom-flip"><span class="bottom-flip-text">0</span></div>
+        </div>
+    </div>
+
+    <!-- 自定义时间模态框 -->
+    <div id="customTimeModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-title">设定起始时间</div>
+            <p class="text-sm opacity-70">时钟将从您设定的时间点开始运行。</p>
+            <input type="datetime-local" id="customTimeInput" class="modal-input" step="1">
+            <div class="modal-btns">
+                <button class="btn-secondary" onclick="closeModal('customTime')">取消</button>
+                <button class="btn-primary" onclick="setCustomTime()">开始运行</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 日期格式设置模态框 -->
+    <div id="dateFormatModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-title">日期显示格式</div>
+            <div class="modal-options">
+                <div class="option-btn option-lunar" onclick="selectDateFormat('lunar')" id="opt-date-lunar">
+                    <span><i class="fas fa-moon mr-2"></i>农历 (阴历)</span>
+                </div>
+                <div class="option-btn" onclick="selectDateFormat('cn-full')" id="opt-date-cn-full">2023年01月01日</div>
+                <div class="option-btn" onclick="selectDateFormat('iso')" id="opt-date-iso">2023-01-01</div>
+                <div class="option-btn" onclick="selectDateFormat('slash')" id="opt-date-slash">2023/01/01</div>
+                <div class="option-btn" onclick="selectDateFormat('short')" id="opt-date-short">01-01</div>
+            </div>
+            <div class="modal-btns">
+                <button class="btn-secondary" onclick="closeModal('dateFormat')">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 星期格式设置模态框 -->
+    <div id="weekFormatModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-title">星期显示格式</div>
+            <div class="modal-options">
+                <div class="option-btn" onclick="selectWeekFormat('zh-full')" id="opt-week-zh-full">星期日</div>
+                <div class="option-btn" onclick="selectWeekFormat('zh-short')" id="opt-week-zh-short">周日</div>
+                <div class="option-btn" onclick="selectWeekFormat('en-full')" id="opt-week-en-full">SUNDAY</div>
+                <div class="option-btn" onclick="selectWeekFormat('en-short')" id="opt-week-en-short">SUN</div>
+            </div>
+            <div class="modal-btns">
+                <button class="btn-secondary" onclick="closeModal('weekFormat')">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主题设置模态框 -->
+    <div id="themeModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-title">选择 UI 主题</div>
+            <div class="theme-grid">
+                <div class="theme-option" onclick="selectTheme('dark')" id="opt-theme-dark" style="background:#333; color:#e0e0e0;">
+                    <span class="theme-preview-bg">经典深色</span>
+                </div>
+                <div class="theme-option" onclick="selectTheme('light')" id="opt-theme-light" style="background:#f0f0f0; color:#333;">
+                    <span class="theme-preview-bg">极简浅色</span>
+                </div>
+                <div class="theme-option" onclick="selectTheme('cyberpunk')" id="opt-theme-cyberpunk" style="background:#09090b; color:#06b6d4; border:1px solid #d946ef;">
+                    <span class="theme-preview-bg">赛博朋克</span>
+                </div>
+                <div class="theme-option" onclick="selectTheme('vintage')" id="opt-theme-vintage" style="background:#eaddcf; color:#5f4b32;">
+                    <span class="theme-preview-bg">复古纸张</span>
+                </div>
+                <div class="theme-option" onclick="selectTheme('ocean')" id="opt-theme-ocean" style="background:#0f172a; color:#38bdf8;">
+                    <span class="theme-preview-bg">深海幽蓝</span>
+                </div>
+            </div>
+            <div class="modal-btns">
+                <button class="btn-secondary" onclick="closeModal('theme')">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 状态管理 ---
+        let timeSource = 'local';
+        let timeOffset = 0;
+        let currentTheme = 'dark';
+        let isMenuOpen = false;
+        let isDateVisible = true; 
+        
+        let dateFormat = 'cn-full'; 
+        let weekFormat = 'zh-full'; 
+
+        // --- 缓存DOM ---
+        const cards = {
+            h1: document.getElementById('h1'), h2: document.getElementById('h2'),
+            m1: document.getElementById('m1'), m2: document.getElementById('m2'),
+            s1: document.getElementById('s1'), s2: document.getElementById('s2'),
+        };
+        const dateContainer = document.getElementById('dateContainer');
+        const datePart = document.getElementById('datePart');
+        const weekPart = document.getElementById('weekPart');
+
+        // --- 模态框管理 ---
+        function openModal(type) {
+            const modalMap = {
+                'customTime': 'customTimeModal',
+                'dateFormat': 'dateFormatModal',
+                'weekFormat': 'weekFormatModal',
+                'theme': 'themeModal'
+            };
+            const modal = document.getElementById(modalMap[type]);
+            
+            if (type === 'customTime') {
+                const now = new Date();
+                const offset = now.getTimezoneOffset() * 60000;
+                const localISOTime = (new Date(now - offset)).toISOString().slice(0, 19);
+                document.getElementById('customTimeInput').value = localISOTime;
+            } else if (type === 'dateFormat') {
+                updateOptionSelection('opt-date-', dateFormat);
+            } else if (type === 'weekFormat') {
+                updateOptionSelection('opt-week-', weekFormat);
+            } else if (type === 'theme') {
+                updateOptionSelection('opt-theme-', currentTheme);
+            }
+
+            modal.classList.add('open');
+        }
+
+        function closeModal(type) {
+            const modalMap = {
+                'customTime': 'customTimeModal',
+                'dateFormat': 'dateFormatModal',
+                'weekFormat': 'weekFormatModal',
+                'theme': 'themeModal'
+            };
+            document.getElementById(modalMap[type]).classList.remove('open');
+        }
+
+        function updateOptionSelection(prefix, currentVal) {
+            document.querySelectorAll(`[id^="${prefix}"]`).forEach(el => el.classList.remove('selected'));
+            const current = document.getElementById(prefix + currentVal);
+            if (current) current.classList.add('selected');
+        }
+
+        // --- 格式与主题设置逻辑 ---
+        function selectDateFormat(format) {
+            dateFormat = format;
+            updateClock();
+            updateOptionSelection('opt-date-', format);
+            setTimeout(() => closeModal('dateFormat'), 200);
+        }
+
+        function selectWeekFormat(format) {
+            weekFormat = format;
+            updateClock();
+            updateOptionSelection('opt-week-', format);
+            setTimeout(() => closeModal('weekFormat'), 200);
+        }
+
+        function selectTheme(theme) {
+            currentTheme = theme;
+            document.body.setAttribute('data-theme', theme);
+            updateOptionSelection('opt-theme-', theme);
+            setTimeout(() => closeModal('theme'), 200);
+        }
+
+        // --- 提示卡片逻辑 (更新：绑定到菜单) ---
+        function closeHint() {
+            document.getElementById('hintCard').classList.remove('show');
+        }
+
+        // --- 关闭旋转提示层 ---
+        function closeRotateOverlay() {
+            document.getElementById('rotateOverlay').style.display = 'none';
+        }
+
+        // --- 农历转换工具 ---
+        function getLunarDateString(date) {
+            const cnNums = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+            const GanZhi = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"];
+            const Zhi = ["子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥"];
+            const Animals = ["鼠", "牛", "虎", "兔", "龙", "蛇", "马", "羊", "猴", "鸡", "狗", "猪"];
+
+            try {
+                const formatter = new Intl.DateTimeFormat('zh-CN', {
+                    calendar: 'chinese',
+                    year: 'numeric',
+                    month: 'numeric',
+                    day: 'numeric'
+                });
+                const parts = formatter.formatToParts(date);
+                
+                let yearNum = 0;
+                let monthVal = '';
+                let dayVal = '';
+                
+                parts.forEach(p => {
+                    if (p.type === 'relatedYear') yearNum = parseInt(p.value); 
+                    if (p.type === 'year') {
+                        const y = parseInt(p.value);
+                        if (!isNaN(y)) yearNum = y;
+                    }
+                    if (p.type === 'month') monthVal = p.value;
+                    if (p.type === 'day') dayVal = p.value;
+                });
+
+                let yearStr = '';
+                if (yearNum > 0) {
+                    const offset = yearNum - 4;
+                    const idx = (offset % 60 + 60) % 60;
+                    const stem = GanZhi[idx % 10];
+                    const branch = Zhi[idx % 12];
+                    const animal = Animals[idx % 12];
+                    yearStr = `${stem}${branch}年(${animal})`;
+                } else {
+                    const yPart = parts.find(p => p.type === 'year');
+                    if (yPart) yearStr = yPart.value;
+                }
+
+                const getMonthName = (m) => {
+                    const mInt = parseInt(m);
+                    if (isNaN(mInt)) return m; 
+                    if (mInt === 1) return '正月';
+                    if (mInt === 11) return '冬月';
+                    if (mInt === 12) return '腊月';
+                    if (mInt <= 10) return cnNums[mInt] + '月';
+                    return '十' + cnNums[mInt-10] + '月';
+                };
+
+                const getDayName = (d) => {
+                    const dInt = parseInt(d);
+                    if (isNaN(dInt)) return d;
+                    if (dInt <= 10) return '初' + cnNums[dInt];
+                    if (dInt < 20) return '十' + cnNums[dInt-10];
+                    if (dInt === 20) return '二十';
+                    if (dInt < 30) return '廿' + cnNums[dInt-20];
+                    if (dInt === 30) return '三十';
+                    return d;
+                };
+
+                return `农历 ${yearStr} ${getMonthName(monthVal)}${getDayName(dayVal)}`;
+
+            } catch (e) {
+                console.error(e);
+                return "农历数据暂不可用";
+            }
+        }
+
+        // --- 核心时钟逻辑 ---
+        
+        function setTimeSource(source) {
+            timeSource = source;
+            updateBtnState();
+            updateClock(); 
+        }
+
+        function updateBtnState() {
+            document.getElementById('btnLocal').classList.toggle('active', timeSource === 'local');
+            document.getElementById('btnBeijing').classList.toggle('active', timeSource === 'beijing');
+            document.getElementById('btnCustom').classList.toggle('active', timeSource === 'custom');
+        }
+
+        function setCustomTime() {
+            const input = document.getElementById('customTimeInput');
+            if (input.value) {
+                const targetTime = new Date(input.value);
+                const now = new Date();
+                timeOffset = targetTime.getTime() - now.getTime();
+                setTimeSource('custom');
+                closeModal('customTime');
+            }
+        }
+
+        function toggleDate() {
+            isDateVisible = !isDateVisible;
+            const btn = document.getElementById('btnDate');
+            
+            if (isDateVisible) {
+                dateContainer.classList.add('visible');
+                btn.classList.add('active');
+            } else {
+                dateContainer.classList.remove('visible');
+                btn.classList.remove('active');
+            }
+            updateClock();
+        }
+
+        function getCurrentDisplayTime() {
+            const now = new Date();
+            if (timeSource === 'custom') return new Date(now.getTime() + timeOffset);
+            if (timeSource === 'beijing') {
+                const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+                return new Date(utc + (3600000 * 8));
+            }
+            return now;
+        }
+
+        function updateClock() {
+            const now = getCurrentDisplayTime();
+
+            const h = String(now.getHours()).padStart(2, '0');
+            const m = String(now.getMinutes()).padStart(2, '0');
+            const s = String(now.getSeconds()).padStart(2, '0');
+            flipCard('h1', h[0]); flipCard('h2', h[1]);
+            flipCard('m1', m[0]); flipCard('m2', m[1]);
+            flipCard('s1', s[0]); flipCard('s2', s[1]);
+
+            if (isDateVisible) {
+                let dateStr = '';
+                const Y = now.getFullYear();
+                const M = String(now.getMonth() + 1).padStart(2, '0');
+                const D = String(now.getDate()).padStart(2, '0');
+
+                if (dateFormat === 'lunar') {
+                    dateStr = getLunarDateString(now);
+                } else if (dateFormat === 'cn-full') {
+                    dateStr = `${Y}年${M}月${D}日`;
+                } else if (dateFormat === 'iso') {
+                    dateStr = `${Y}-${M}-${D}`;
+                } else if (dateFormat === 'slash') {
+                    dateStr = `${Y}/${M}/${D}`;
+                } else if (dateFormat === 'short') {
+                    dateStr = `${M}-${D}`;
+                }
+                datePart.innerText = dateStr;
+
+                let weekStr = '';
+                const dayIdx = now.getDay();
+                if (weekFormat === 'zh-full') {
+                    weekStr = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'][dayIdx];
+                } else if (weekFormat === 'zh-short') {
+                    weekStr = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][dayIdx];
+                } else if (weekFormat === 'en-full') {
+                    weekStr = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'][dayIdx];
+                } else if (weekFormat === 'en-short') {
+                    weekStr = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'][dayIdx];
+                }
+                weekPart.innerText = weekStr;
+            }
+        }
+
+        // --- UI & 翻页动画 ---
+        function toggleMenu() {
+            const wrapper = document.getElementById('controlsWrapper');
+            const hint = document.getElementById('hintCard');
+            isMenuOpen = !isMenuOpen;
+            if (isMenuOpen) {
+                wrapper.classList.add('expanded');
+                hint.classList.add('show');
+            } else {
+                wrapper.classList.remove('expanded');
+                hint.classList.remove('show');
+            }
+        }
+
+        function toggleFullScreen() {
+            try {
+                if (!document.fullscreenElement) {
+                    if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(err => console.warn(err));
+                } else {
+                    if (document.exitFullscreen) document.exitFullscreen().catch(err => console.warn(err));
+                }
+            } catch (err) { console.warn("Fullscreen API not available:", err); }
+        }
+
+        function flipCard(cardId, newValue) {
+            const card = cards[cardId];
+            const currentValue = card.getAttribute('data-val');
+            if (currentValue === newValue) return;
+
+            const top = card.querySelector('.top .top-text');
+            const bottom = card.querySelector('.bottom .bottom-text');
+            const topFlip = card.querySelector('.top-flip .top-flip-text');
+            const bottomFlip = card.querySelector('.bottom-flip .bottom-flip-text');
+
+            top.innerText = newValue;
+            bottom.innerText = currentValue;
+            topFlip.innerText = currentValue;
+            bottomFlip.innerText = newValue;
+
+            card.classList.remove('flipping');
+            void card.offsetWidth; 
+            card.classList.add('flipping');
+
+            const onAnimationEnd = () => {
+                top.innerText = newValue;
+                bottom.innerText = newValue;
+                topFlip.innerText = newValue;
+                bottomFlip.innerText = newValue;
+                card.classList.remove('flipping');
+                card.setAttribute('data-val', newValue);
+                card.querySelector('.bottom-flip').removeEventListener('animationend', onAnimationEnd);
+            };
+            
+            card.querySelector('.bottom-flip').addEventListener('animationend', onAnimationEnd);
+        }
+
+        (function init() {
+            let now = new Date(); 
+            const h = String(now.getHours()).padStart(2, '0');
+            const m = String(now.getMinutes()).padStart(2, '0');
+            const s = String(now.getSeconds()).padStart(2, '0');
+            
+            const setVal = (id, val) => {
+                const card = cards[id];
+                card.setAttribute('data-val', val);
+                card.querySelectorAll('span').forEach(span => span.innerText = val);
+            };
+
+            setVal('h1', h[0]); setVal('h2', h[1]);
+            setVal('m1', m[0]); setVal('m2', m[1]);
+            setVal('s1', s[0]); setVal('s2', s[1]);
+
+            setInterval(updateClock, 1000);
+            updateClock(); 
+        })();
+    </script>
+</body>
+</html>
